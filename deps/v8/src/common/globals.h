@@ -151,6 +151,8 @@ constexpr int kMaxInt16 = (1 << 15) - 1;
 constexpr int kMinInt16 = -(1 << 15);
 constexpr int kMaxUInt16 = (1 << 16) - 1;
 constexpr int kMinUInt16 = 0;
+constexpr int kMaxInt31 = kMaxInt / 2;
+constexpr int kMinInt31 = kMinInt / 2;
 
 constexpr uint32_t kMaxUInt32 = 0xFFFFFFFFu;
 constexpr int kMinUInt32 = 0;
@@ -278,6 +280,11 @@ constexpr int kPointerSize = kSystemPointerSize;
 constexpr int kPointerSizeLog2 = kSystemPointerSizeLog2;
 STATIC_ASSERT(kPointerSize == (1 << kPointerSizeLog2));
 #endif
+
+// This type defines raw storage type for external (or off-V8 heap) pointers
+// stored on V8 heap.
+using ExternalPointer_t = Address;
+constexpr int kExternalPointerSize = sizeof(ExternalPointer_t);
 
 constexpr int kEmbedderDataSlotSize = kSystemPointerSize;
 
@@ -646,6 +653,7 @@ class NewSpace;
 class NewLargeObjectSpace;
 class NumberDictionary;
 class Object;
+class OffThreadIsolate;
 class OldLargeObjectSpace;
 template <HeapObjectReferenceType kRefType, typename StorageType>
 class TaggedImpl;
@@ -805,17 +813,6 @@ enum class LocalSpaceKind {
 
 enum Executability { NOT_EXECUTABLE, EXECUTABLE };
 
-enum VisitMode {
-  VISIT_ALL,
-  VISIT_ALL_IN_MINOR_MC_MARK,
-  VISIT_ALL_IN_MINOR_MC_UPDATE,
-  VISIT_ALL_IN_SCAVENGE,
-  VISIT_ALL_IN_SWEEP_NEWSPACE,
-  VISIT_ONLY_STRONG,
-  VISIT_ONLY_STRONG_IGNORE_STACK,
-  VISIT_FOR_SERIALIZATION,
-};
-
 enum class BytecodeFlushMode {
   kDoNotFlushBytecode,
   kFlushBytecode,
@@ -837,7 +834,7 @@ enum NativesFlag { NOT_NATIVES_CODE, EXTENSION_CODE, INSPECTOR_CODE };
 
 // ParseRestriction is used to restrict the set of valid statements in a
 // unit of compilation.  Restriction violations cause a syntax error.
-enum ParseRestriction {
+enum ParseRestriction : bool {
   NO_PARSE_RESTRICTION,         // All expressions are allowed.
   ONLY_SINGLE_FUNCTION_LITERAL  // Only a single FunctionLiteral expression.
 };
@@ -1598,7 +1595,10 @@ enum class LoadSensitivity {
   V(TrapElemSegmentDropped)        \
   V(TrapTableOutOfBounds)          \
   V(TrapBrOnExnNullRef)            \
-  V(TrapRethrowNullRef)
+  V(TrapRethrowNullRef)            \
+  V(TrapNullDereference)           \
+  V(TrapIllegalCast)               \
+  V(TrapArrayOutOfBounds)
 
 enum KeyedAccessLoadMode {
   STANDARD_LOAD,

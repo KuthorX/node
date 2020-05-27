@@ -22,11 +22,6 @@ std::ostream& operator<<(std::ostream& os, CallFrequency const& f) {
   return os << f.value();
 }
 
-CallFrequency CallFrequencyOf(Operator const* op) {
-  DCHECK_EQ(op->opcode(), IrOpcode::kJSConstructWithArrayLike);
-  return OpParameter<CallFrequency>(op);
-}
-
 std::ostream& operator<<(std::ostream& os,
                          ConstructForwardVarargsParameters const& p) {
   return os << p.arity() << ", " << p.start_index();
@@ -60,6 +55,7 @@ std::ostream& operator<<(std::ostream& os, ConstructParameters const& p) {
 
 ConstructParameters const& ConstructParametersOf(Operator const* op) {
   DCHECK(op->opcode() == IrOpcode::kJSConstruct ||
+         op->opcode() == IrOpcode::kJSConstructWithArrayLike ||
          op->opcode() == IrOpcode::kJSConstructWithSpread);
   return OpParameter<ConstructParameters>(op);
 }
@@ -230,8 +226,12 @@ std::ostream& operator<<(std::ostream& os, FeedbackParameter const& p) {
 }
 
 FeedbackParameter const& FeedbackParameterOf(const Operator* op) {
-  DCHECK(op->opcode() == IrOpcode::kJSCreateEmptyLiteralArray ||
+  DCHECK(op->opcode() == IrOpcode::kJSDecrement ||
+         op->opcode() == IrOpcode::kJSBitwiseNot ||
+         op->opcode() == IrOpcode::kJSCreateEmptyLiteralArray ||
+         op->opcode() == IrOpcode::kJSIncrement ||
          op->opcode() == IrOpcode::kJSInstanceOf ||
+         op->opcode() == IrOpcode::kJSNegate ||
          op->opcode() == IrOpcode::kJSStoreDataPropertyInLiteral ||
          op->opcode() == IrOpcode::kJSStoreInArrayLiteral);
   return OpParameter<FeedbackParameter>(op);
@@ -663,10 +663,6 @@ CompareOperationHint CompareOperationHintOf(const Operator* op) {
   V(Divide, Operator::kNoProperties, 2, 1)                               \
   V(Modulus, Operator::kNoProperties, 2, 1)                              \
   V(Exponentiate, Operator::kNoProperties, 2, 1)                         \
-  V(BitwiseNot, Operator::kNoProperties, 1, 1)                           \
-  V(Decrement, Operator::kNoProperties, 1, 1)                            \
-  V(Increment, Operator::kNoProperties, 1, 1)                            \
-  V(Negate, Operator::kNoProperties, 1, 1)                               \
   V(ToLength, Operator::kNoProperties, 1, 1)                             \
   V(ToName, Operator::kNoProperties, 1, 1)                               \
   V(ToNumber, Operator::kNoProperties, 1, 1)                             \
@@ -702,6 +698,12 @@ CompareOperationHint CompareOperationHintOf(const Operator* op) {
   V(GetSuperConstructor, Operator::kNoWrite, 1, 1)                       \
   V(ParseInt, Operator::kNoProperties, 2, 1)                             \
   V(RegExpTest, Operator::kNoProperties, 2, 1)
+
+#define UNARY_OP_LIST(V) \
+  V(BitwiseNot)          \
+  V(Decrement)           \
+  V(Increment)           \
+  V(Negate)
 
 #define BINARY_OP_LIST(V) V(Add)
 
@@ -818,6 +820,16 @@ CACHED_OP_LIST(CACHED_OP)
   }
 BINARY_OP_LIST(BINARY_OP)
 #undef BINARY_OP
+
+#define UNARY_OP(Name)                                                        \
+  const Operator* JSOperatorBuilder::Name(FeedbackSource const& feedback) {   \
+    FeedbackParameter parameters(feedback);                                   \
+    return new (zone()) Operator1<FeedbackParameter>(                         \
+        IrOpcode::kJS##Name, Operator::kNoProperties, "JS" #Name, 1, 1, 1, 1, \
+        1, 2, parameters);                                                    \
+  }
+UNARY_OP_LIST(UNARY_OP)
+#undef UNARY_OP
 
 #define COMPARE_OP(Name, ...)                                          \
   const Operator* JSOperatorBuilder::Name(CompareOperationHint hint) { \
@@ -972,13 +984,15 @@ const Operator* JSOperatorBuilder::Construct(uint32_t arity,
 }
 
 const Operator* JSOperatorBuilder::ConstructWithArrayLike(
-    CallFrequency const& frequency) {
-  return new (zone()) Operator1<CallFrequency>(  // --
-      IrOpcode::kJSConstructWithArrayLike,       // opcode
-      Operator::kNoProperties,                   // properties
-      "JSConstructWithArrayLike",                // name
-      3, 1, 1, 1, 1, 2,                          // counts
-      frequency);                                // parameter
+    CallFrequency const& frequency, FeedbackSource const& feedback) {
+  static constexpr uint32_t arity = 3;
+  ConstructParameters parameters(arity, frequency, feedback);
+  return new (zone()) Operator1<ConstructParameters>(  // --
+      IrOpcode::kJSConstructWithArrayLike,             // opcode
+      Operator::kNoProperties,                         // properties
+      "JSConstructWithArrayLike",                      // name
+      parameters.arity(), 1, 1, 1, 1, 2,               // counts
+      parameters);                                     // parameter
 }
 
 const Operator* JSOperatorBuilder::ConstructWithSpread(
@@ -1420,6 +1434,7 @@ Handle<ScopeInfo> ScopeInfoOf(const Operator* op) {
   return OpParameter<Handle<ScopeInfo>>(op);
 }
 
+#undef UNARY_OP_LIST
 #undef BINARY_OP_LIST
 #undef CACHED_OP_LIST
 #undef COMPARE_OP_LIST

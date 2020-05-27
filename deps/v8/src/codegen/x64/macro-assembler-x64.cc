@@ -14,10 +14,11 @@
 #include "src/codegen/register-configuration.h"
 #include "src/codegen/string-constants.h"
 #include "src/codegen/x64/assembler-x64.h"
+#include "src/common/external-pointer.h"
 #include "src/common/globals.h"
 #include "src/debug/debug.h"
 #include "src/execution/frames-inl.h"
-#include "src/heap/heap-inl.h"  // For MemoryChunk.
+#include "src/heap/memory-chunk.h"
 #include "src/init/bootstrapper.h"
 #include "src/logging/counters.h"
 #include "src/objects/objects-inl.h"
@@ -338,6 +339,14 @@ void TurboAssembler::SaveRegisters(RegList registers) {
     if ((registers >> i) & 1u) {
       pushq(Register::from_code(i));
     }
+  }
+}
+
+void TurboAssembler::LoadExternalPointerField(Register destination,
+                                              Operand field_operand) {
+  movq(destination, field_operand);
+  if (V8_HEAP_SANDBOX_BOOL) {
+    xorq(destination, Immediate(kExternalPointerSalt));
   }
 }
 
@@ -716,7 +725,7 @@ void TurboAssembler::Cvtsd2ss(XMMRegister dst, Operand src) {
 void TurboAssembler::Cvtlsi2sd(XMMRegister dst, Register src) {
   if (CpuFeatures::IsSupported(AVX)) {
     CpuFeatureScope scope(this, AVX);
-    vcvtlsi2sd(dst, kScratchDoubleReg, src);
+    vcvtlsi2sd(dst, dst, src);
   } else {
     xorpd(dst, dst);
     cvtlsi2sd(dst, src);
@@ -726,7 +735,7 @@ void TurboAssembler::Cvtlsi2sd(XMMRegister dst, Register src) {
 void TurboAssembler::Cvtlsi2sd(XMMRegister dst, Operand src) {
   if (CpuFeatures::IsSupported(AVX)) {
     CpuFeatureScope scope(this, AVX);
-    vcvtlsi2sd(dst, kScratchDoubleReg, src);
+    vcvtlsi2sd(dst, dst, src);
   } else {
     xorpd(dst, dst);
     cvtlsi2sd(dst, src);
@@ -736,7 +745,7 @@ void TurboAssembler::Cvtlsi2sd(XMMRegister dst, Operand src) {
 void TurboAssembler::Cvtlsi2ss(XMMRegister dst, Register src) {
   if (CpuFeatures::IsSupported(AVX)) {
     CpuFeatureScope scope(this, AVX);
-    vcvtlsi2ss(dst, kScratchDoubleReg, src);
+    vcvtlsi2ss(dst, dst, src);
   } else {
     xorps(dst, dst);
     cvtlsi2ss(dst, src);
@@ -746,7 +755,7 @@ void TurboAssembler::Cvtlsi2ss(XMMRegister dst, Register src) {
 void TurboAssembler::Cvtlsi2ss(XMMRegister dst, Operand src) {
   if (CpuFeatures::IsSupported(AVX)) {
     CpuFeatureScope scope(this, AVX);
-    vcvtlsi2ss(dst, kScratchDoubleReg, src);
+    vcvtlsi2ss(dst, dst, src);
   } else {
     xorps(dst, dst);
     cvtlsi2ss(dst, src);
@@ -756,7 +765,7 @@ void TurboAssembler::Cvtlsi2ss(XMMRegister dst, Operand src) {
 void TurboAssembler::Cvtqsi2ss(XMMRegister dst, Register src) {
   if (CpuFeatures::IsSupported(AVX)) {
     CpuFeatureScope scope(this, AVX);
-    vcvtqsi2ss(dst, kScratchDoubleReg, src);
+    vcvtqsi2ss(dst, dst, src);
   } else {
     xorps(dst, dst);
     cvtqsi2ss(dst, src);
@@ -766,7 +775,7 @@ void TurboAssembler::Cvtqsi2ss(XMMRegister dst, Register src) {
 void TurboAssembler::Cvtqsi2ss(XMMRegister dst, Operand src) {
   if (CpuFeatures::IsSupported(AVX)) {
     CpuFeatureScope scope(this, AVX);
-    vcvtqsi2ss(dst, kScratchDoubleReg, src);
+    vcvtqsi2ss(dst, dst, src);
   } else {
     xorps(dst, dst);
     cvtqsi2ss(dst, src);
@@ -776,7 +785,7 @@ void TurboAssembler::Cvtqsi2ss(XMMRegister dst, Operand src) {
 void TurboAssembler::Cvtqsi2sd(XMMRegister dst, Register src) {
   if (CpuFeatures::IsSupported(AVX)) {
     CpuFeatureScope scope(this, AVX);
-    vcvtqsi2sd(dst, kScratchDoubleReg, src);
+    vcvtqsi2sd(dst, dst, src);
   } else {
     xorpd(dst, dst);
     cvtqsi2sd(dst, src);
@@ -786,7 +795,7 @@ void TurboAssembler::Cvtqsi2sd(XMMRegister dst, Register src) {
 void TurboAssembler::Cvtqsi2sd(XMMRegister dst, Operand src) {
   if (CpuFeatures::IsSupported(AVX)) {
     CpuFeatureScope scope(this, AVX);
-    vcvtqsi2sd(dst, kScratchDoubleReg, src);
+    vcvtqsi2sd(dst, dst, src);
   } else {
     xorpd(dst, dst);
     cvtqsi2sd(dst, src);
@@ -2747,10 +2756,10 @@ void TurboAssembler::CheckPageFlag(Register object, Register scratch, int mask,
     andq(scratch, object);
   }
   if (mask < (1 << kBitsPerByte)) {
-    testb(Operand(scratch, MemoryChunk::kFlagsOffset),
+    testb(Operand(scratch, BasicMemoryChunk::kFlagsOffset),
           Immediate(static_cast<uint8_t>(mask)));
   } else {
-    testl(Operand(scratch, MemoryChunk::kFlagsOffset), Immediate(mask));
+    testl(Operand(scratch, BasicMemoryChunk::kFlagsOffset), Immediate(mask));
   }
   j(cc, condition_met, condition_met_distance);
 }
